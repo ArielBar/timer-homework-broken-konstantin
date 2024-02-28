@@ -1,5 +1,5 @@
 import { Injectable, NgZone } from '@angular/core';
-import { Observable, timer, BehaviorSubject } from 'rxjs';
+import { Observable, timer, BehaviorSubject, Subscription } from 'rxjs';
 import { tap, filter } from 'rxjs/operators';
 @Injectable({
   providedIn: 'root',
@@ -11,8 +11,10 @@ export class TimerManagerService {
     subj$: BehaviorSubject<number>;
     isRunning: boolean;
   }[] = [];
-  constructor(private ngZone: NgZone) {
-    this.runTimers(); //FIXME: can be a performance issue
+  
+  timersSub: Subscription;
+
+  constructor(private ngZone: NgZone) {    
   }
 
   getTimer(id: number): Observable<number> {
@@ -27,21 +29,27 @@ export class TimerManagerService {
     const timer = this.timers.find((x) => x.id === id);
     if (timer) {
       timer.isRunning = true;
+      this.runTimers();
     }
   }
   public pauseTimer(id: number): void {
     const timer = this.timers.find((x) => x.id === id);
     if (timer) {
       timer.isRunning = false;
+      this.runTimers();
     }
   }
 
   private runTimers(): void {
-    timer(0, 1000)
+    if(this.timers.findIndex((y) => y.isRunning) >= 0) {
+      if(this.timersSub && !this.timersSub.closed){
+        return;
+      }
+      this.timersSub = timer(0, 1000)
       .pipe(
         filter((x) => this.timers.findIndex((y) => y.isRunning) >= 0),
         tap(() => {
-          this.ngZone.run(() => {
+          this.ngZone.runOutsideAngular(() => {
             this.timers
               .filter((x) => x.isRunning)
               .forEach((subj) => subj.subj$.next(subj.subj$.value + 1));
@@ -49,5 +57,8 @@ export class TimerManagerService {
         })
       )
       .subscribe();
+    } else {
+      this.timersSub && this.timersSub.unsubscribe();
+    }    
   }
 }
